@@ -1,0 +1,17 @@
+# Python venv
+airflow_venv/
+venv/
+.venv/
+
+# Airflow runtime
+logs/
+plugins/
+__pycache__/
+*.pyc
+airflow.db
+airflow.cfg
+webserver_config.py
+
+# IDEs
+.vscode/
+.idea/
