@@ -1,6 +1,7 @@
 import requests
-from airflow_home.dags.pipeline import logger
+import logging
 
+logger = logging.getLogger(__name__)
 
 class ApiPuller():
     def __init__(self, api_url: str, params: dict = None):

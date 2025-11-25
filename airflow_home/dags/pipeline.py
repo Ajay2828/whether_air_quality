@@ -3,9 +3,12 @@ from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 from datetime import datetime
 import logging
-# import sys
-# import os
-# sys.path.append(os.path.join(os.path.dirname(__file__), "../../"))
+
+
+
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), "../../"))
 from src.extract.weather_api import ApiPuller
 
 logger = logging.getLogger(__name__)
@@ -18,15 +21,15 @@ def extract_weather(**context):
         "hourly": "temperature_2m,relativehumidity_2m"
     }
 
-    data = ApiPuller(api_url=api_url, params=params)
+    api = ApiPuller(api_url=api_url, params=params)
+    data = api._fetch_data(params)
 
-    return data
-
+    logger.info(data)
 
 with DAG(
     dag_id='weather_data_pipeline',
     start_date=datetime(2023, 1, 1),
-    schedule_interval='@daily',
+    schedule_interval='30 6 * * *',
     catchup=False,
     tags=['weather', 'air_quality'],
 ) as dag:
@@ -38,7 +41,7 @@ with DAG(
     weather_data_pull_task = PythonOperator(
         task_id='extract_weather_data',
         python_callable=extract_weather,
-        provice_context=True,
+        provide_context=True,
         
     )
 
