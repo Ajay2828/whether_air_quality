@@ -4,6 +4,7 @@ import os
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 import pandas as pd
+import time
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -17,13 +18,7 @@ class SourceConfig():
         self.port = os.getenv('WEATHER_DB_PORT')
         self.db = os.getenv('WEATHER_DB_NAME')
 
-    def get_connection_string(self):
-        logger.info(self.user)
-        logger.info(self.password)
-        logger.info(self.host)
-        logger.info(self.port)
-        logger.info(self.db)
-    
+    def get_connection_string(self):    
         return f"postgresql+psycopg2://{self.user}:{self.password}@{self.host}:{self.port}/{self.db}"
 
 
@@ -40,14 +35,26 @@ class ApiPuller():
 
         logger.info("Fetching weather data...")
 
-        try:
-            response = requests.get(self.api_url, headers=headers, params=self.params)
-            response.raise_for_status()
-            return response.json()
+        max_retries = 5
+        base_sleep = 2
+        max_sleep = 60
+        for attempt in range(1, max_retries + 1):
+            try:
+                response = requests.get(self.api_url, headers=headers, params=self.params)
+                response.raise_for_status()
+                return response.json()
+        
 
-        except Exception as e:
-            logger.error(f"API error: {e}")
-            return None
+            except Exception as e:
+                logger.error(f"API error: {e}")
+                if attempt == max_retries:
+                    logger.error("Max retries reached. Exiting.")
+                    break
+                sleep_time = min(base_sleep * (2 ** (attempt - 1)), max_sleep)
+                logger.info(f"Retrying in {sleep_time} seconds...")
+                time.sleep(sleep_time)
+
+        return None
 
 
 def extract_weather():
@@ -73,8 +80,12 @@ def extract_weather():
         "relativehumidity_2m": hourly["relativehumidity_2m"]
     })
 
-    logger.info(df.head())
+    
+    df["time"] = pd.to_datetime(df["time"], utc=True)
+
+    df = df[df["time"] <= pd.Timestamp.utcnow()]
+
     engine = create_engine(SourceConfig().get_connection_string())
-    df.to_sql("weather_hourly", engine, if_exists="append", index=False)
+    df.to_sql("weather_hourly_raw", engine, schema="bronze", if_exists="append", index=False)
 
     logger.info("Weather data written to Postgres successfully")
