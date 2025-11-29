@@ -11,13 +11,19 @@ logger = logging.getLogger(__name__)
 
 class SourceConfig():
     def __init__(self):
-        self.user = os.getenv('DB_USER')
-        self.password = os.getenv('DB_PASSWORD')
-        self.host = os.getenv('DB_HOST')
-        self.port = os.getenv('DB_PORT')
-        self.db = os.getenv('DB_NAME')
+        self.user = os.getenv('WEATHER_DB_USER')
+        self.password = os.getenv('WEATHER_DB_PASSWORD')
+        self.host = os.getenv('WEATHER_DB_HOST')
+        self.port = os.getenv('WEATHER_DB_PORT')
+        self.db = os.getenv('WEATHER_DB_NAME')
 
     def get_connection_string(self):
+        logger.info(self.user)
+        logger.info(self.password)
+        logger.info(self.host)
+        logger.info(self.port)
+        logger.info(self.db)
+    
         return f"postgresql+psycopg2://{self.user}:{self.password}@{self.host}:{self.port}/{self.db}"
 
 
@@ -67,6 +73,7 @@ def extract_weather():
         "relativehumidity_2m": hourly["relativehumidity_2m"]
     })
 
+    logger.info(df.head())
     engine = create_engine(SourceConfig().get_connection_string())
     df.to_sql("weather_hourly", engine, if_exists="append", index=False)
 
