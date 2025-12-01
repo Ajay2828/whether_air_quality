@@ -7,9 +7,10 @@ from datetime import datetime
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../"))
 from src.extract.weather_api import extract_weather
+from src.extract.air_quality_api import extract_air_quality
 
 with DAG(
-    dag_id='weather_data_pipeline',
+    dag_id='weather_air_data_pipeline',
     start_date=datetime(2024, 11, 27),
     schedule_interval='30 6 * * *',
     catchup=False,
@@ -27,9 +28,16 @@ with DAG(
         
     )
 
+    air_quality_data_pull_task = PythonOperator(
+        task_id='extract_air_quality_data',
+        python_callable=extract_air_quality,
+        provide_context=True,
+        
+    )
+
     end_task = BashOperator(
         task_id='end_pipeline',
         bash_command='echo "Pipeline finished successfully!"',
     )
 
-    start_task >> weather_data_pull_task >> end_task
+    start_task >> weather_data_pull_task >> air_quality_data_pull_task >> end_task
