@@ -8,6 +8,7 @@ from datetime import datetime
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../"))
 from src.extract.weather_api import extract_weather
 from src.extract.air_quality_api import extract_air_quality
+from src.transform.transform import Tranformer
 
 with DAG(
     dag_id='weather_air_data_pipeline',
@@ -35,9 +36,15 @@ with DAG(
         
     )
 
+    tranformation_task = PythonOperator(
+        task_id='tranform_data',
+        python_callable = Tranformer().tranformation,
+        provide_context=True,
+    )
+
     end_task = BashOperator(
         task_id='end_pipeline',
         bash_command='echo "Pipeline finished successfully!"',
     )
 
-    start_task >> weather_data_pull_task >> air_quality_data_pull_task >> end_task
+    start_task >> weather_data_pull_task >> air_quality_data_pull_task >> tranformation_task >> end_task
