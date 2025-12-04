@@ -24,16 +24,16 @@ class Tranformer():
         engine = create_engine(SourceConfig().get_connection_string())
 
         
-        yesterday = datetime.now() - timedelta(days=1)
+        yesterday = datetime.utcnow() - timedelta(days=1)
         datetime_str = yesterday.strftime('%Y-%m-%d %H:%M:%S')
-        sql_query = f"SELECT * FROM bronze.weather_hourly_raw WHERE time = '{datetime_str}';"
+        sql_query = f"SELECT * FROM bronze.weather_hourly_raw WHERE time > '{datetime_str}';"
         df = pd.read_sql_query(sql_query, con=engine)
 
         if df.empty:
             logger.warning("No data found in the weather_hourly_raw table.")
             return
         
-        sql_query = f"SELECT * FROM bronze.air_quality_hourly_raw WHERE time = '{datetime_str}';"
+        sql_query = f"SELECT * FROM bronze.air_quality_hourly_raw WHERE time > '{datetime_str}';"
         df1 = pd.read_sql_query(sql_query, con=engine)
 
         if df1.empty:
