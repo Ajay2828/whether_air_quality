@@ -49,8 +49,8 @@ class Tranformer():
     def tranformation_gold(self):
         engine = create_engine(SourceConfig().get_connection_string())
         
-        yesterday = datetime.utcnow() - timedelta(days=1)
-        sql_query = f"SELECT * FROM silver.weather_air_quality_hourly  WHERE time > '{yesterday}';"
+        yesterday = datetime.utcnow().date() - timedelta(days=1)
+        sql_query = f"SELECT * FROM silver.weather_air_quality_hourly  WHERE time::date = '{yesterday}';"
         df = pd.read_sql_query(sql_query, con=engine)
 
         if df.empty:
@@ -59,15 +59,28 @@ class Tranformer():
 
         df['time'] = pd.to_datetime(df['time'])
         df['date'] = df['time'].dt.date
-        df['hour'] = df['time'].dt.hour
 
-        gold_df = df.groupby(['date', 'hour']).agg({
-            'temperature': 'mean',
-            'humidity': 'mean',
-            'pressure': 'mean',
-            'air_quality_index': 'mean'
-        }).reset_index()
 
-        gold_df.to_sql('weather_air_quality_daily', con=engine, schema='gold', if_exists='append', index=False)
+        gold_df = df.groupby('date').agg(
+            avg_temp=('temperature_2m', 'mean'),
+            max_temp=("temperature_2m", "max"),
+            min_temp=("temperature_2m", "min"),
+            avg_humidity=("relativehumidity_2m", "mean"),
+            avg_aqi=("us_aqi", "mean")
+        ).reset_index()
+
+        gold_df["temp_spread"] = (
+            gold_df["max_temp"] - gold_df["min_temp"]
+        )
+
+        gold_df.drop(columns=["min_temp"], inplace=True)
+
+
+        gold_df.to_sql(
+            'weather_air_quality_daily', 
+             con=engine, schema='gold', 
+             if_exists='append', 
+             index=False
+        )
+        
         logger.info("Data transformation and loading to gold.weather_air_quality_daily completed successfully.")
-
