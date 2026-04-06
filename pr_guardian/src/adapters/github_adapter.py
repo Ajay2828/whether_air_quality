@@ -1,0 +1,58 @@
+"""GitHub adapter — implements GitProvider using PyGithub."""
+
+from github import Github
+from github.PullRequest import PullRequest
+
+from src.interfaces.git_provider import GitProvider, PRFile
+
+
+class GitHubAdapter(GitProvider):
+    """Concrete GitProvider for GitHub repositories."""
+
+    def __init__(self, token: str, repo_name: str):
+        """
+        Args:
+            token: GitHub personal access token or GitHub App token.
+            repo_name: Full repository name, e.g. "owner/repo".
+        """
+        self._client = Github(token)
+        self._repo = self._client.get_repo(repo_name)
+
+    # ── helpers ──────────────────────────────────────────────
+
+    def _get_pr(self, pr_id: int) -> PullRequest:
+        return self._repo.get_pull(pr_id)
+
+    # ── interface implementation ─────────────────────────────
+
+    def get_pr_diff(self, pr_id: int) -> list[PRFile]:
+        pr = self._get_pr(pr_id)
+        files: list[PRFile] = []
+        for f in pr.get_files():
+            files.append(
+                PRFile(
+                    filename=f.filename,
+                    patch=f.patch or "",
+                    status=f.status,
+                    additions=f.additions,
+                    deletions=f.deletions,
+                )
+            )
+        return files
+
+    def post_comment(self, pr_id: int, comment: str) -> None:
+        pr = self._get_pr(pr_id)
+        pr.as_issue().create_comment(comment)
+
+    def post_inline_comment(
+        self, pr_id: int, file: str, line: int, comment: str
+    ) -> None:
+        pr = self._get_pr(pr_id)
+        # To post an inline comment we need the latest commit SHA
+        commit = pr.get_commits().reversed[0]
+        pr.create_review_comment(
+            body=comment,
+            commit=commit,
+            path=file,
+            line=line,
+        )

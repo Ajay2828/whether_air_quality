@@ -17,3 +17,6 @@ webserver_config.py
 # IDEs
 .vscode/
 .idea/
+
+# PR Guardian
+.env

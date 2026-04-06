@@ -36,9 +36,15 @@ with DAG(
         
     )
 
-    tranformation_task = PythonOperator(
-        task_id='tranform_data',
-        python_callable = Tranformer().tranformation,
+    tranformation_task_silver = PythonOperator(
+        task_id='tranform_data_silver',
+        python_callable = Tranformer().tranformation_silver,
+        provide_context=True,
+    )
+
+    tranformation_task_gold = PythonOperator(
+        task_id='tranform_data_gold',
+        python_callable = Tranformer().tranformation_gold,
         provide_context=True,
     )
 
@@ -47,4 +53,4 @@ with DAG(
         bash_command='echo "Pipeline finished successfully!"',
     )
 
-    start_task >> weather_data_pull_task >> air_quality_data_pull_task >> tranformation_task >> end_task
+    start_task >> weather_data_pull_task >> air_quality_data_pull_task >> tranformation_task_silver >> tranformation_task_gold >> end_task
