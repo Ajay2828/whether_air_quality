@@ -56,3 +56,14 @@ class GitHubAdapter(GitProvider):
             path=file,
             line=line,
         )
+
+    def has_existing_review(self, pr_id: int) -> bool:
+        """Check if the PR already has an AI review comment.
+
+        Prevents duplicate reviews when a PR is updated rapidly.
+        """
+        pr = self._get_pr(pr_id)
+        for comment in pr.as_issue().get_comments():
+            if "🤖 AI Code Review" in (comment.body or ""):
+                return True
+        return False

@@ -1,7 +1,9 @@
 """ReviewAgent — the central orchestrator.
 
-This module knows NOTHING about GitHub, Bitbucket, OpenRouter, or Gemini.
-It only talks to the abstract GitProvider and LLMProvider interfaces.
+Production-hardened with:
+- Duplicate review prevention (skips if PR already has a review)
+- PR size guard (warns on 50+ file PRs)
+- Graceful inline-comment fallback
 """
 
 import logging
@@ -12,6 +14,9 @@ from src.core.diff_filter import filter_diff
 from src.core.prompts import SYSTEM_PROMPT, build_user_prompt
 
 logger = logging.getLogger(__name__)
+
+# Maximum number of changed files before we skip the LLM review
+MAX_FILES_FOR_REVIEW = 50
 
 
 class ReviewAgent:
@@ -25,18 +30,48 @@ class ReviewAgent:
         """Run a full review on a pull request.
 
         Steps:
-            1. Fetch the PR diff from the Git provider
-            2. Filter out noisy / irrelevant files
-            3. Build the prompt and call the LLM
-            4. Post the review comments back to the PR
-            5. Return the comments for logging / testing
+            1. Check for duplicate reviews
+            2. Fetch the PR diff from the Git provider
+            3. Guard against oversized PRs
+            4. Filter out noisy / irrelevant files
+            5. Build the prompt and call the LLM
+            6. Post the review comments back to the PR
+            7. Return the comments for logging / testing
         """
-        # ── 1. fetch ─────────────────────────────────────────
+        # ── 1. duplicate check ───────────────────────────────
+        if hasattr(self._git, "has_existing_review"):
+            if self._git.has_existing_review(pr_id):
+                logger.info(
+                    "PR #%d already has an AI review — skipping to avoid "
+                    "duplicates. Delete the previous review comment to "
+                    "re-trigger.",
+                    pr_id,
+                )
+                return []
+
+        # ── 2. fetch ─────────────────────────────────────────
         logger.info("Fetching diff for PR #%d ...", pr_id)
         raw_files = self._git.get_pr_diff(pr_id)
         logger.info("  → %d files changed", len(raw_files))
 
-        # ── 2. filter ────────────────────────────────────────
+        # ── 3. size guard ────────────────────────────────────
+        if len(raw_files) > MAX_FILES_FOR_REVIEW:
+            logger.warning(
+                "  ⚠ PR has %d files — too large for automated review",
+                len(raw_files),
+            )
+            self._git.post_comment(
+                pr_id,
+                "## 🤖 AI Code Review\n\n"
+                f"⚠️ **This PR is too large for automated review** "
+                f"({len(raw_files)} files changed).\n\n"
+                "Please consider breaking it into smaller, focused PRs "
+                "for better review quality. The AI reviewer works best "
+                "with PRs under 50 files.",
+            )
+            return []
+
+        # ── 4. filter ────────────────────────────────────────
         filtered_files = filter_diff(raw_files)
         logger.info("  → %d files after filtering", len(filtered_files))
 
@@ -44,7 +79,7 @@ class ReviewAgent:
             logger.info("  → nothing to review (all files filtered out)")
             return []
 
-        # ── 3. build prompt & call LLM ───────────────────────
+        # ── 5. build prompt & call LLM ───────────────────────
         diff_text = self._build_combined_diff(filtered_files)
         user_prompt = build_user_prompt(diff_text)
         logger.info("  → sending %d chars to LLM ...", len(user_prompt))
@@ -52,7 +87,7 @@ class ReviewAgent:
         comments = self._llm.generate_review(SYSTEM_PROMPT, user_prompt)
         logger.info("  → LLM returned %d comments", len(comments))
 
-        # ── 4. post comments ─────────────────────────────────
+        # ── 6. post comments ─────────────────────────────────
         self._post_comments(pr_id, comments)
 
         return comments

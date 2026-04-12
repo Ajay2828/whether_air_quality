@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """CLI entry point for the AI Code Review Agent.
 
+Production-hardened with:
+- Top-level error handling (posts failure notice to PR, never blocks merge)
+- Graceful exit on all error paths
+
 Usage:
     python main.py --repo owner/repo --pr 123
 
@@ -51,6 +55,7 @@ def main():
     from src.config import get_git_provider, get_llm_provider
     from src.core.review_agent import ReviewAgent
 
+    git = None
     try:
         git = get_git_provider()
         llm = get_llm_provider()
@@ -62,19 +67,42 @@ def main():
     # ── run review ───────────────────────────────────────────
     agent = ReviewAgent(git=git, llm=llm)
 
-    if args.dry_run:
-        # For dry-run, use a mock git provider that just prints
-        logger.info("DRY RUN — comments will be printed, not posted")
-        comments = _dry_run_review(agent, git, llm, args.pr)
-    else:
-        comments = agent.review_pr(args.pr)
+    try:
+        if args.dry_run:
+            logger.info("DRY RUN — comments will be printed, not posted")
+            comments = _dry_run_review(agent, git, llm, args.pr)
+        else:
+            comments = agent.review_pr(args.pr)
 
-    # ── summary ──────────────────────────────────────────────
-    logger.info("Review complete — %d comments generated", len(comments))
-    for c in comments:
-        severity = c.severity.upper()
-        loc = f"{c.file}:{c.line}" if c.file and c.line else "(general)"
-        logger.info("  [%s] %s — %s", severity, loc, c.comment[:120])
+        # ── summary ──────────────────────────────────────────
+        logger.info("Review complete — %d comments generated", len(comments))
+        for c in comments:
+            severity = c.severity.upper()
+            loc = f"{c.file}:{c.line}" if c.file and c.line else "(general)"
+            logger.info("  [%s] %s — %s", severity, loc, c.comment[:120])
+
+    except Exception as e:
+        logger.error("PR Guardian failed: %s", e, exc_info=True)
+
+        # Post a failure notice to the PR so the team knows
+        if git and not args.dry_run:
+            try:
+                git.post_comment(
+                    args.pr,
+                    "## 🤖 AI Code Review\n\n"
+                    "⚠️ **PR Guardian encountered an error** and could not "
+                    "complete the review.\n\n"
+                    f"```\n{type(e).__name__}: {e}\n```\n\n"
+                    "This does not block your PR. A team member can "
+                    "re-run the review from the Actions tab.",
+                )
+            except Exception as post_err:
+                logger.error(
+                    "Failed to post error notice to PR: %s", post_err
+                )
+
+        # Exit 0 so the GitHub Action does NOT block the PR merge
+        sys.exit(0)
 
 
 def _dry_run_review(agent, git, llm, pr_id):
