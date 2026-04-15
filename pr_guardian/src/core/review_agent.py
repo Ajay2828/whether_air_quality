@@ -145,10 +145,8 @@ class ReviewAgent:
             self._git.post_comment(pr_id, body)
 
         if not comments:
-            self._git.post_comment(
-                pr_id,
-                "## 🤖 AI Code Review\n\n✅ No issues found — looks good!",
-            )
+            # No issues found — stay silent (no "looks good" noise)
+            logger.info("  → no issues found — skipping comment")
 
         logger.info(
             "  → posted %d inline + %d summary comments (%d inline failures)",
