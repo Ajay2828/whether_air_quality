@@ -1,6 +1,7 @@
 """ReviewAgent — the central orchestrator.
 
 Production-hardened with:
+- Cross-file context injection (fetches referenced files for LLM)
 - Duplicate review prevention (skips if PR already has a review)
 - PR size guard (warns on 50+ file PRs)
 - Graceful inline-comment fallback
@@ -12,6 +13,7 @@ from src.interfaces.git_provider import GitProvider
 from src.interfaces.llm_provider import LLMProvider, ReviewComment
 from src.core.diff_filter import filter_diff
 from src.core.prompts import SYSTEM_PROMPT, build_user_prompt
+from src.core.context_resolver import resolve_context_files, build_context_text
 
 logger = logging.getLogger(__name__)
 
@@ -79,15 +81,34 @@ class ReviewAgent:
             logger.info("  → nothing to review (all files filtered out)")
             return []
 
-        # ── 5. build prompt & call LLM ───────────────────────
+        # ── 5. resolve cross-file context ────────────────────
+        changed_filenames = {f.filename for f in filtered_files}
+        context_paths = resolve_context_files(filtered_files, changed_filenames)
+
+        context_text = ""
+        if context_paths and hasattr(self._git, "get_file_content"):
+            file_contents: dict[str, str] = {}
+            for path in context_paths:
+                content = self._git.get_file_content(path)
+                if content:
+                    file_contents[path] = content
+                    logger.info("  → fetched context: %s (%d chars)", path, len(content))
+                else:
+                    logger.debug("  → context file not found: %s", path)
+            if file_contents:
+                context_text = build_context_text(file_contents)
+                logger.info("  → total context: %d chars from %d files",
+                            len(context_text), len(file_contents))
+
+        # ── 6. build prompt & call LLM ───────────────────────
         diff_text = self._build_combined_diff(filtered_files)
-        user_prompt = build_user_prompt(diff_text)
+        user_prompt = build_user_prompt(diff_text, context_text=context_text)
         logger.info("  → sending %d chars to LLM ...", len(user_prompt))
 
         comments = self._llm.generate_review(SYSTEM_PROMPT, user_prompt)
         logger.info("  → LLM returned %d comments", len(comments))
 
-        # ── 6. post comments ─────────────────────────────────
+        # ── 7. post comments ─────────────────────────────────
         self._post_comments(pr_id, comments)
 
         return comments

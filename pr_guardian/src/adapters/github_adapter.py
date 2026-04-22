@@ -57,6 +57,20 @@ class GitHubAdapter(GitProvider):
             line=line,
         )
 
+    def get_file_content(self, path: str, ref: str = "main") -> str | None:
+        """Fetch a file's content from the repo.
+
+        Uses the repo's default branch to get the current version
+        of the referenced file.
+        """
+        try:
+            content = self._repo.get_contents(path, ref=ref)
+            if hasattr(content, "decoded_content"):
+                return content.decoded_content.decode("utf-8", errors="replace")
+            return None
+        except Exception:
+            return None
+
     def has_existing_review(self, pr_id: int) -> bool:
         """Check if the PR already has an AI review comment.
 
