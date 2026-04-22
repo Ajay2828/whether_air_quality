@@ -38,3 +38,16 @@ class GitProvider(ABC):
     ) -> None:
         """Post a comment on a specific line of a specific file."""
         ...
+
+    @abstractmethod
+    def get_file_content(self, path: str, ref: str = "main") -> str | None:
+        """Fetch the content of a file from the repository.
+
+        Args:
+            path: Repo-relative file path (e.g., 'src/utils.py')
+            ref: Branch or commit ref to read from (default: 'main')
+
+        Returns:
+            File content as a string, or None if the file doesn't exist.
+        """
+        ...

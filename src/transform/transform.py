@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-password = "123456"   
 
 class SourceConfig():
     def __init__(self):
